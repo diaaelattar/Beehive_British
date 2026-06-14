@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🐝 Beehive 2 — Interactive Learning App</title>
+  <meta name="description" content="Beehive 2 British English interactive learning app — 10 units, vocab, grammar, audio, and exercises for young learners.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Fredoka+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('Service Worker registered successfully!', reg))
+          .catch(err => console.error('Service Worker registration failed:', err));
+      });
+    }
+  </script>
+</head>
+<body>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hex-bg"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-inner">
+      <div class="hero-left">
+        <div class="hero-bee">🐝</div>
+        <div class="hero-text">
+          <h1>Beehive 2<br>Interactive App</h1>
+          <p>Oxford University Press · British English</p>
+          <div class="hero-stats">
+            <span class="stat-pill">11 Units</span>
+            <span class="stat-pill">221 Audio Tracks</span>
+            <span class="stat-pill">80+ Vocab Words</span>
+            <span class="stat-pill">Interactive Exercises</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button class="hero-btn primary" onclick="openStats()">📊 My Progress</button>
+        <button class="hero-btn secondary" style="background:#0EA5E9; border-color:#0EA5E9; color:#fff;" onclick="openResources()">📚 Resource Center</button>
+        <button class="hero-btn secondary" onclick="resetProgress()">🔄 Reset</button>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+      </div>
+    </div>
+    <!-- Overview bar -->
+    <div class="overview-bar" id="overviewBar">
+      <div class="ov-stat">⭐ Score: <span class="ov-val" id="ov-score">0</span> pts</div>
+      <div class="ov-sep"></div>
+      <div class="ov-stat">✅ Lessons: <span class="ov-val" id="ov-lessons">0</span></div>
+      <div class="ov-sep"></div>
+      <div class="ov-stat">🎯 Exercises: <span class="ov-val" id="ov-ex">0</span></div>
+      <div class="ov-sep"></div>
+      <div class="ov-stat">🎵 Audio: <span class="ov-val" id="ov-audio">0</span></div>
+    </div>
+  </header>
+
+  <!-- UNIT TABS -->
+  <nav class="unit-selector">
+    <div class="unit-tabs" id="unitTabs"></div>
+  </nav>
+
+  <!-- LESSON TABS -->
+  <div class="lesson-nav">
+    <div class="lesson-tabs" id="lessonTabs"></div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <main class="main" id="mainContent"></main>
+
+  <footer>
+    <strong>Beehive 2 · Oxford University Press</strong> · Interactive Web App<br>
+    <span style="font-size:.65rem">Built for young English learners 🐝</span>
+  </footer>
+
+  <!-- CONFETTI LAYER -->
+  <div class="confetti-layer" id="confettiLayer"></div>
+
+  <!-- STATS MODAL -->
+  <div class="stats-panel" id="statsPanel">
+    <div class="stats-modal">
+      <button class="stats-close" onclick="closeStats()">✕</button>
+      <div class="stats-title">📊 My Progress</div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:10px;">🏆 Badges</div>
+        <div class="badges-row" id="badgesRow"></div>
+      </div>
+      <div style="background:var(--bg-surface);border-radius:12px;padding:14px;border:2px solid var(--border)">
+        <div style="font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:10px;">📚 Unit Progress</div>
+        <div id="unitProgressList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESOURCES MODAL -->
+  <div class="stats-panel" id="resourcesPanel">
+    <div class="stats-modal" style="max-width: 620px; width: 95%;">
+      <button class="stats-close" onclick="closeResources()">✕</button>
+      <div class="stats-title">📚 Resource & Exam Center</div>
+      
+      <!-- Modal Tabs -->
+      <div class="res-tabs">
+        <button class="res-tab active" id="resTabBtn_books" onclick="switchResourceTab('books')">📖 Books & Audio</button>
+        <button class="res-tab" id="resTabBtn_tests" onclick="switchResourceTab('tests')">📝 General Tests</button>
+        <button class="res-tab" id="resTabBtn_units" onclick="switchResourceTab('units')">🎯 Unit Tests</button>
+      </div>
+
+      <!-- Tab Contents -->
+      <div id="resContent_books" class="res-tab-content">
+        <div class="res-grid" id="booksList"></div>
+      </div>
+      <div id="resContent_tests" class="res-tab-content" style="display:none;">
+        <div class="res-list" id="generalTestsList"></div>
+      </div>
+      <div id="resContent_units" class="res-tab-content" style="display:none; max-height: 400px; overflow-y: auto; padding-right: 4px;">
+        <div class="res-list" id="unitTestsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Data then Application Logic -->
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

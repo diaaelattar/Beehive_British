@@ -1,0 +1,17 @@
+{
+  "name": "Beehive 2 Interactive App",
+  "short_name": "Beehive 2",
+  "description": "British English interactive learning app for young learners.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#FFF9E6",
+  "theme_color": "#FFD700",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "app_logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

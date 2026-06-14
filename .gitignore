@@ -1,0 +1,10 @@
+# Temporary files and logs
+.gemini/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Exclude zip files since we unzipped them
+*.zip
