@@ -3,6 +3,7 @@ const CORE_ASSETS = [
   'index.html',
   'css/style.css',
   'js/data.js',
+  'js/data_v3.js',
   'js/app.js',
   'app_logo.png',
   'manifest.json'

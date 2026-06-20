@@ -8,3 +8,7 @@ Thumbs.db
 
 # Exclude zip files since we unzipped them
 *.zip
+
+# Redundant reference directories
+beehive2-app-v3-tests-workbook/
+beehive2-book-viewer/

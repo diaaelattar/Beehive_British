@@ -14,6 +14,16 @@ function defaultState() {
     lastUnit: 0,
     lastLesson: 0,
     theme: 'light',
+    appMode: 'lessons',
+    testAnswers: {},
+    testChecked: {},
+    speakDone: {},
+    wbAnswers: {},
+    wbChecked: {},
+    bookUnit: 0,
+    bookPageIdx: 0,
+    workbookUnit: 0,
+    testUnit: 0
   };
 }
 
@@ -666,8 +676,29 @@ let currentUnit = STATE.lastUnit || 0;
 let currentLesson = STATE.lastLesson || 0;
 
 function buildApp() {
-  buildUnitTabs();
-  renderUnit(currentUnit, currentLesson);
+  initAppModes();
+  
+  if (STATE.appMode === 'lessons') {
+    const rootUnit = document.getElementById('rootUnitSelector');
+    const rootLesson = document.getElementById('rootLessonSelector');
+    if (rootUnit) rootUnit.style.display = 'block';
+    if (rootLesson) rootLesson.style.display = 'block';
+    buildUnitTabs();
+    renderUnit(currentUnit, currentLesson);
+  } else {
+    const rootUnit = document.getElementById('rootUnitSelector');
+    const rootLesson = document.getElementById('rootLessonSelector');
+    if (rootUnit) rootUnit.style.display = 'none';
+    if (rootLesson) rootLesson.style.display = 'none';
+    
+    if (STATE.appMode === 'book') {
+      initBook();
+    } else if (STATE.appMode === 'workbook') {
+      initWorkbook();
+    } else if (STATE.appMode === 'tests') {
+      initTests();
+    }
+  }
   updateOverviewBar();
 }
 
@@ -1210,3 +1241,1276 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// APP MODES MANAGEMENT (Lessons, Digital Student Book, Workbook, Tests)
+// ══════════════════════════════════════════════════════════════════
+
+let bookInitialized = false;
+let wbInitialized = false;
+let testsInitialized = false;
+
+let currentBookUnit = STATE.bookUnit || 0;
+let currentBookPageIdx = STATE.bookPageIdx || 0;
+let currentWbUnit = STATE.workbookUnit || 0;
+let currentTestUnit = STATE.testUnit || 0;
+
+let bookPlayer = new Audio();
+let currentBookTrackBtn = null;
+
+let testPlayer = new Audio();
+let testPlayBtn = null;
+
+function initAppModes() {
+  const tabsWrap = document.getElementById('appModeTabs');
+  if (!tabsWrap) return;
+  tabsWrap.querySelectorAll('.am-tab').forEach(btn => {
+    btn.onclick = () => switchAppMode(btn.dataset.mode);
+  });
+  updateAppModeTabsUI();
+}
+
+function updateAppModeTabsUI() {
+  const tabsWrap = document.getElementById('appModeTabs');
+  if (!tabsWrap) return;
+  tabsWrap.querySelectorAll('.am-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === (STATE.appMode || 'lessons'));
+  });
+}
+
+function switchAppMode(mode) {
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio = null;
+    activeAudioId = null;
+  }
+  stopBookAudio();
+  stopTestAudio();
+  
+  STATE.appMode = mode;
+  saveState();
+  updateAppModeTabsUI();
+  
+  const rootUnit = document.getElementById('rootUnitSelector');
+  const rootLesson = document.getElementById('rootLessonSelector');
+  
+  if (mode === 'lessons') {
+    if (rootUnit) rootUnit.style.display = 'block';
+    if (rootLesson) rootLesson.style.display = 'block';
+    buildUnitTabs();
+    renderUnit(currentUnit, currentLesson);
+  } else {
+    if (rootUnit) rootUnit.style.display = 'none';
+    if (rootLesson) rootLesson.style.display = 'none';
+    
+    if (mode === 'book') {
+      initBook();
+    } else if (mode === 'workbook') {
+      initWorkbook();
+    } else if (mode === 'tests') {
+      initTests();
+    }
+  }
+  updateOverviewBar();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DIGITAL STUDENT BOOK MODE
+// ══════════════════════════════════════════════════════════════════
+
+function initBook() {
+  bookInitialized = true;
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  
+  main.innerHTML = `
+    <nav class="unit-nav" style="border-bottom: 1px solid var(--border); margin-bottom: 20px;">
+      <div class="unit-tabs" id="bookUnitTabs"></div>
+    </nav>
+    <div class="lesson-wrap" style="padding-top: 0;">
+      <div class="unit-title-row" style="display: flex; align-items: center; gap: 16px; margin-bottom: 22px;">
+        <div class="unit-icon" id="bookUnitIcon" style="width: 58px; height: 58px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-family: 'Fredoka One', cursive; font-size: 1.7rem; color: #fff; box-shadow: 0 6px 0 rgba(0,0,0,.12);"></div>
+        <div>
+          <h2 id="bookUnitTitle" style="font-family: 'Fredoka One', cursive; font-size: 1.6rem; color: var(--text-primary);"></h2>
+          <p id="bookUnitTopic" style="color: var(--text-secondary); font-size: .85rem; font-weight: 700; margin-top: 2px;"></p>
+        </div>
+      </div>
+      
+      <div class="reader">
+        <button class="nav-arrow prev" id="bookPrevBtn" title="Previous page (←)">‹</button>
+        <div class="page-stage">
+          <div class="page-frame" id="bookPageFrame" style="width: 100%; max-width: 640px; border-radius: 10px; overflow: hidden; position: relative; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);">
+            <div class="ph" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #D8CDB4; font-size: 2rem;">📖</div>
+            <img id="bookPageImg" alt="Book page" style="display: block; width: 100%; height: auto; opacity: 0; transition: opacity .35s ease;">
+            <button class="nav-arrow mobile-show prev" id="bookPrevBtnM">‹</button>
+            <button class="nav-arrow mobile-show next" id="bookNextBtnM">›</button>
+          </div>
+          <div class="page-meta" style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 640px; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
+            <div class="page-counter" style="font-weight: 800; font-size: .82rem; color: var(--text-secondary);">Page <b id="bookPageIdx" style="color: var(--text-primary);">1</b> of <b id="bookPageTotal">12</b></div>
+            <div class="book-page-num" id="bookPageNum" style="background: var(--text-primary); color: var(--bg); font-family: 'Fredoka One', cursive; font-size: .78rem; padding: 4px 12px; border-radius: 8px;">p. 6</div>
+          </div>
+          
+          <div class="audio-strip">
+            <div class="audio-strip-label">🔊 Tracks</div>
+            <div class="track-btns" id="bookTrackBtns"></div>
+          </div>
+          
+          <div class="thumb-strip" id="bookThumbStrip"></div>
+          <div class="kbd-hint" style="text-align: center; color: var(--text-secondary); font-size: .74rem; font-weight: 700; margin-top: 6px;">Use <kbd>←</kbd> <kbd>→</kbd> arrow keys to turn pages</div>
+        </div>
+        <button class="nav-arrow next" id="bookNextBtn" title="Next page (→)">›</button>
+      </div>
+    </div>
+  `;
+  
+  buildBookUnitTabs();
+  renderBookUnit();
+  
+  // Wire controls
+  document.getElementById('bookPrevBtn').onclick = goBookPrev;
+  document.getElementById('bookNextBtn').onclick = goBookNext;
+  document.getElementById('bookPrevBtnM').onclick = goBookPrev;
+  document.getElementById('bookNextBtnM').onclick = goBookNext;
+}
+
+function buildBookUnitTabs() {
+  const wrap = document.getElementById('bookUnitTabs');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  BOOK_UNITS.forEach((u, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'utab' + (i === currentBookUnit ? ' active' : '');
+    const badge = u.num === 'S' ? '★' : u.num;
+    const label = u.num === 'S' ? 'Starter' : `Unit ${u.num}`;
+    btn.innerHTML = `<span class="ubadge" style="background:${u.color}; width:24px; height:24px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; font-family:'Fredoka One',cursive; font-size:.78rem; color:#fff; margin-right:6px;">${badge}</span>${label}`;
+    btn.onclick = () => {
+      currentBookUnit = i;
+      currentBookPageIdx = 0;
+      STATE.bookUnit = i;
+      STATE.bookPageIdx = 0;
+      saveState();
+      renderBookUnit();
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+function renderBookUnit() {
+  document.querySelectorAll('#bookUnitTabs .utab').forEach((b, i) => b.classList.toggle('active', i === currentBookUnit));
+  const u = BOOK_UNITS[currentBookUnit];
+  const icon = document.getElementById('bookUnitIcon');
+  if (icon) {
+    icon.style.background = u.color;
+    icon.textContent = u.num === 'S' ? '★' : u.num;
+  }
+  const title = document.getElementById('bookUnitTitle');
+  if (title) title.textContent = u.title;
+  const topic = document.getElementById('bookUnitTopic');
+  if (topic) topic.textContent = u.topic;
+  
+  renderBookPage();
+}
+
+function renderBookPage() {
+  stopBookAudio();
+  const u = BOOK_UNITS[currentBookUnit];
+  const page = u.pages[currentBookPageIdx];
+  if (!page) return;
+  
+  const img = document.getElementById('bookPageImg');
+  const frame = document.getElementById('bookPageFrame');
+  const loader = frame.querySelector('.ph');
+  
+  if (img) {
+    img.classList.remove('loaded');
+    if (loader) loader.style.display = 'flex';
+    img.src = `Student Book/images/${page.file}`;
+    img.onload = () => {
+      img.classList.add('loaded');
+      if (loader) loader.style.display = 'none';
+    };
+    img.onerror = () => {
+      if (loader) {
+        loader.textContent = '⚠️ Failed to load page';
+        loader.style.display = 'flex';
+      }
+    };
+  }
+  
+  const pageIdxEl = document.getElementById('bookPageIdx');
+  if (pageIdxEl) pageIdxEl.textContent = currentBookPageIdx + 1;
+  const pageTotalEl = document.getElementById('bookPageTotal');
+  if (pageTotalEl) pageTotalEl.textContent = u.pages.length;
+  const pageNumEl = document.getElementById('bookPageNum');
+  if (pageNumEl) pageNumEl.textContent = `p. ${page.page}`;
+  
+  // Audio tracks
+  const trackBtns = document.getElementById('bookTrackBtns');
+  if (trackBtns) {
+    trackBtns.innerHTML = '';
+    if (page.tracks && page.tracks.length) {
+      page.tracks.forEach(track => {
+        const btn = document.createElement('button');
+        btn.className = 'track-btn';
+        btn.innerHTML = `▶ <span class="ic">Track ${track}</span>`;
+        btn.dataset.track = track;
+        btn.dataset.unit = page.unit;
+        btn.onclick = () => playBookTrack(page.unit, track, btn);
+        trackBtns.appendChild(btn);
+      });
+    } else {
+      trackBtns.innerHTML = '<span class="no-tracks">No audio tracks for this page</span>';
+    }
+  }
+  
+  // Thumbnails
+  const thumbStrip = document.getElementById('bookThumbStrip');
+  if (thumbStrip) {
+    thumbStrip.innerHTML = '';
+    u.pages.forEach((p, idx) => {
+      const div = document.createElement('div');
+      div.className = 'thumb' + (idx === currentBookPageIdx ? ' active' : '');
+      div.innerHTML = `<img src="Student Book/images/${p.file}" loading="lazy"><span class="tnum">${p.page}</span>`;
+      div.onclick = () => {
+        currentBookPageIdx = idx;
+        STATE.bookPageIdx = idx;
+        saveState();
+        renderBookPage();
+      };
+      thumbStrip.appendChild(div);
+    });
+    const activeThumb = thumbStrip.children[currentBookPageIdx];
+    if (activeThumb) {
+      thumbStrip.scrollTo({
+        left: activeThumb.offsetLeft - thumbStrip.offsetWidth / 2 + activeThumb.offsetWidth / 2,
+        behavior: 'smooth'
+      });
+    }
+  }
+  
+  // Disable arrows
+  const prevBtn = document.getElementById('bookPrevBtn');
+  const nextBtn = document.getElementById('bookNextBtn');
+  const prevBtnM = document.getElementById('bookPrevBtnM');
+  const nextBtnM = document.getElementById('bookNextBtnM');
+  
+  const isFirst = (currentBookUnit === 0 && currentBookPageIdx === 0);
+  const isLast = (currentBookUnit === BOOK_UNITS.length - 1 && currentBookPageIdx === u.pages.length - 1);
+  
+  if (prevBtn) prevBtn.disabled = isFirst;
+  if (prevBtnM) prevBtnM.disabled = isFirst;
+  if (nextBtn) nextBtn.disabled = isLast;
+  if (nextBtnM) nextBtnM.disabled = isLast;
+}
+
+function goBookPrev() {
+  if (STATE.appMode !== 'book') return;
+  if (currentBookPageIdx > 0) {
+    currentBookPageIdx--;
+    STATE.bookPageIdx = currentBookPageIdx;
+    saveState();
+    renderBookPage();
+    return;
+  }
+  if (currentBookUnit > 0) {
+    currentBookUnit--;
+    currentBookPageIdx = BOOK_UNITS[currentBookUnit].pages.length - 1;
+    STATE.bookUnit = currentBookUnit;
+    STATE.bookPageIdx = currentBookPageIdx;
+    saveState();
+    buildBookUnitTabs();
+    renderBookUnit();
+  }
+}
+
+function goBookNext() {
+  if (STATE.appMode !== 'book') return;
+  const u = BOOK_UNITS[currentBookUnit];
+  if (currentBookPageIdx < u.pages.length - 1) {
+    currentBookPageIdx++;
+    STATE.bookPageIdx = currentBookPageIdx;
+    saveState();
+    renderBookPage();
+    return;
+  }
+  if (currentBookUnit < BOOK_UNITS.length - 1) {
+    currentBookUnit++;
+    currentBookPageIdx = 0;
+    STATE.bookUnit = currentBookUnit;
+    STATE.bookPageIdx = 0;
+    saveState();
+    buildBookUnitTabs();
+    renderBookUnit();
+  }
+}
+
+function getBookAudioUrl(unit, track) {
+  const t = String(track).padStart(3, '0');
+  if (unit === 'ST') return `audio/beehive2-unit-ST-track-${t}.mp3`;
+  if (unit === 'EXT') return `audio/beehive2-Extensive-reading-track-${t}.mp3`;
+  return `audio/beehive2-unit-${unit}-track-${t}.mp3`;
+}
+
+function playBookTrack(unit, track, btn) {
+  const src = getBookAudioUrl(unit, track);
+  if (currentBookTrackBtn === btn) {
+    stopBookAudio();
+    return;
+  }
+  stopBookAudio();
+  
+  btn.dataset.label = btn.innerHTML;
+  bookPlayer.src = src;
+  bookPlayer.play().catch(() => {
+    btn.innerHTML = `<span class="ic">⚠️</span> Track ${String(track).padStart(3, '0')} (missing)`;
+    setTimeout(() => { btn.innerHTML = btn.dataset.label; }, 2000);
+  });
+  btn.innerHTML = `<span class="ic">⏸</span> Track ${String(track).padStart(3, '0')}`;
+  btn.classList.add('playing');
+  currentBookTrackBtn = btn;
+  bookPlayer.onended = () => stopBookAudio();
+  
+  // Stats increment
+  STATE.audioPlayed = (STATE.audioPlayed || 0) + 1;
+  saveState();
+}
+
+function stopBookAudio() {
+  bookPlayer.pause();
+  bookPlayer.currentTime = 0;
+  if (currentBookTrackBtn) {
+    currentBookTrackBtn.classList.remove('playing');
+    currentBookTrackBtn.innerHTML = currentBookTrackBtn.dataset.label || `▶ <span class="ic">Track ${currentBookTrackBtn.dataset.track}</span>`;
+  }
+  currentBookTrackBtn = null;
+}
+
+// Add arrow keys turning pages
+document.addEventListener('keydown', e => {
+  if (STATE.appMode === 'book') {
+    if (e.key === 'ArrowLeft') goBookPrev();
+    if (e.key === 'ArrowRight') goBookNext();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// INTERACTIVE WORKBOOK MODE
+// ══════════════════════════════════════════════════════════════════
+
+function getWbAns(unitIdx, exKey) {
+  STATE.wbAnswers[unitIdx] = STATE.wbAnswers[unitIdx] || {};
+  STATE.wbAnswers[unitIdx][exKey] = STATE.wbAnswers[unitIdx][exKey] || {};
+  return STATE.wbAnswers[unitIdx][exKey];
+}
+
+function initWorkbook() {
+  wbInitialized = true;
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  
+  main.innerHTML = `
+    <nav class="unit-nav" style="border-bottom: 1px solid var(--border); margin-bottom: 20px;">
+      <div class="unit-tabs" id="wbUnitTabs"></div>
+    </nav>
+    <main class="main" id="wbMain" style="padding: 0; max-width: 100%;"></main>
+  `;
+  
+  buildWbUnitTabs();
+  renderWbUnit();
+}
+
+function buildWbUnitTabs() {
+  const wrap = document.getElementById('wbUnitTabs');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  WB_UNITS.forEach((u, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'utab' + (i === currentWbUnit ? ' active' : '');
+    const badge = u.num === 0 ? '★' : u.num;
+    const label = u.num === 0 ? 'Starter' : `Unit ${u.num}`;
+    btn.innerHTML = `<span class="ubadge" style="background:${u.color}; width:24px; height:24px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; font-family:'Fredoka One',cursive; font-size:.78rem; color:#fff; margin-right:6px;">${badge}</span>${label} Workbook`;
+    btn.onclick = () => {
+      currentWbUnit = i;
+      STATE.workbookUnit = i;
+      saveState();
+      renderWbUnit();
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+function renderWbUnit() {
+  document.querySelectorAll('#wbUnitTabs .utab').forEach((b, i) => b.classList.toggle('active', i === currentWbUnit));
+  const u = WB_UNITS[currentWbUnit];
+  const main = document.getElementById('wbMain');
+  if (!main) return;
+  const checked = !!STATE.wbChecked[currentWbUnit];
+  const badge = u.num === 0 ? '★' : u.num;
+
+  let html = `
+    <div class="test-head">
+      <div class="test-head-left">
+        <div class="unit-icon" style="background:${u.color}; width:58px; height:58px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-family:'Fredoka One',cursive; font-size:1.7rem; color:#fff; box-shadow: 0 6px 0 rgba(0,0,0,.12);">${badge}</div>
+        <div>
+          <h2 style="font-family:'Fredoka One',cursive;font-size:1.4rem; color: var(--text-primary);">${escapeHtml(u.title)} — Workbook</h2>
+          <p style="color:var(--text-secondary);font-size:.82rem;font-weight:700;">${u.exercises.length} exercises · ${u.pages.length} pages</p>
+        </div>
+      </div>
+      <div class="test-actions">
+        <button class="btn btn-ghost" id="wbResetBtn">↺ Reset</button>
+        <button class="btn btn-primary" id="wbCheckBtn">✓ Check answers</button>
+      </div>
+    </div>
+  `;
+
+  if (checked) {
+    const {earned, max} = scoreWbUnit(currentWbUnit);
+    const pct = max ? earned / max : 0;
+    let cls = 'retry', emoji = '🐝', msg = 'Keep practising!';
+    if (pct >= .85) { cls = 'celebrate'; emoji = '🎉'; msg = 'Excellent work!'; }
+    else if (pct >= .6) { cls = 'ok'; emoji = '👍'; msg = 'Good job! Keep going.'; }
+    html += `
+      <div class="results-banner ${cls}">
+        <div class="results-emoji">${emoji}</div>
+        <div class="results-text">
+          <strong>${earned} / ${max} (auto-graded)</strong>
+          <span>${msg} Personal &amp; creative activities aren't graded.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const lessons = [];
+  u.exercises.forEach(ex => { if (!lessons.includes(ex.lesson)) lessons.push(ex.lesson); });
+
+  lessons.forEach(lesson => {
+    const lessonExs = u.exercises.filter(e => e.lesson === lesson);
+    const pages = [...new Set(lessonExs.map(e => e.page))];
+    html += `<div class="lesson-badge">${escapeHtml(lesson)}</div>`;
+    html += `<div class="test-page-block">`;
+    pages.forEach(p => {
+      html += `<div class="test-page-img-wrap"><img src="${p}" loading="lazy" alt="${escapeHtml(lesson)}"></div>`;
+    });
+    html += `<div class="test-sections">`;
+    lessonExs.forEach(ex => {
+      html += renderWbEx(u, ex, checked);
+    });
+    html += `</div></div>`;
+  });
+
+  main.innerHTML = html;
+
+  document.getElementById('wbCheckBtn').onclick = () => {
+    STATE.wbChecked[currentWbUnit] = true;
+    const {earned} = scoreWbUnit(currentWbUnit);
+    STATE.score = (STATE.score || 0) + (earned * 5);
+    saveState();
+    renderWbUnit();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  };
+  
+  document.getElementById('wbResetBtn').onclick = () => {
+    delete STATE.wbAnswers[currentWbUnit];
+    delete STATE.wbChecked[currentWbUnit];
+    saveState();
+    renderWbUnit();
+  };
+  
+  wireWbInputs(checked);
+}
+
+function renderWbEx(u, ex, checked) {
+  const key = ex.lesson + '_' + ex.exnum;
+  const isPersonal = ex.type === 'personal';
+  let h = `<div class="sec-block" data-exkey="${key}">`;
+  if (isPersonal) h += `<span class="ungraded-tag" style="float:right;background:var(--text-secondary);">personal</span>`;
+  h += `<div class="sec-instr"><span class="secnum">${ex.exnum}.</span> ${escapeHtml(ex.instruction)}</div>`;
+  if (ex.note) h += `<div class="sec-context">💡 ${escapeHtml(ex.note)}</div>`;
+
+  if (ex.wordBank) {
+    h += `<div class="word-bank">` + ex.wordBank.map(w => `<span class="wb-chip" data-word="${escapeHtml(w)}">${escapeHtml(w)}</span>`).join('') + `</div>`;
+  }
+
+  if (ex.type === 'crossword') {
+    h += renderWbCrossword(ex, key, checked);
+    h += `</div>`;
+    return h;
+  }
+  if (ex.type === 'word-order') {
+    h += renderWbWordOrder(ex, key, checked);
+    h += `</div>`;
+    return h;
+  }
+
+  h += `<div class="items">`;
+  ex.items.forEach((it, idx) => {
+    h += renderWbItem(ex, key, it, idx, checked);
+  });
+  h += `</div></div>`;
+  return h;
+}
+
+function renderWbCrossword(ex, key, checked) {
+  const ans = getWbAns(currentWbUnit, key);
+  let h = '<div class="crossword-area">';
+  ex.items.forEach((row, idx) => {
+    const stored = ans[idx] || '';
+    let cells = '';
+    for (let i = 0; i < row.word.length; i++) {
+      const isSecret = i === row.secretIdx;
+      const ch = stored[i] || '';
+      let cls = 'cw-cell';
+      if (isSecret) cls += ' cw-secret-col';
+      if (checked) {
+        const correct = (row.word[i] || '').toUpperCase();
+        if (ch && ch.toUpperCase() === correct) cls += ' correct';
+        else if (ch) cls += ' incorrect';
+      }
+      cells += `<input maxlength="1" class="${cls}" data-key="${key}" data-idx="${idx}" data-pos="${i}" data-kind="cw-cell" value="${escapeHtml(ch)}" ${checked ? 'disabled' : ''}>`;
+    }
+    h += `<div class="crossword-row">
+      <div class="cw-pic-label">${idx + 1}</div>
+      <div class="crossword-cells">${cells}</div>
+      ${checked ? `<span class="txt-answer-hint" style="margin-left: 8px;">✓ ${row.word}</span>` : ''}
+    </div>`;
+  });
+  h += '</div>';
+  
+  const secretStored = ans.secret || '';
+  let sCls = '';
+  if (checked) sCls = normText(secretStored) === normText(ex.secretWord) ? 'correct' : 'incorrect';
+  h += `
+    <div class="secret-word-box">
+      <label>🐝 The secret word is S</label>
+      <input class="txt-input ${sCls}" style="max-width:180px;text-transform:uppercase;" data-key="${key}" data-idx="secret" data-kind="cw-secret" value="${escapeHtml(secretStored.replace(/^[Ss]/, ''))}" ${checked ? 'disabled' : ''} placeholder="___">
+      ${checked && sCls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${ex.secretWord}</span>` : ''}
+    </div>
+  `;
+  return h;
+}
+
+function renderWbWordOrder(ex, key, checked) {
+  const ans = getWbAns(currentWbUnit, key);
+  let h = '';
+  ex.items.forEach((it, idx) => {
+    const sentVal = (ans[idx] && ans[idx].sentence) || '';
+    const speakerVal = (ans[idx] && ans[idx].speaker) || '';
+    let sCls = '', spCls = '';
+    if (checked) {
+      sCls = normStrict(sentVal) === normStrict(it.answer) ? 'correct' : 'incorrect';
+      spCls = (speakerVal === String(it.character)) ? 'correct' : 'incorrect';
+    }
+    const chips = it.words.map(w => `<span class="wb-chip" style="cursor:default;">${escapeHtml(w)}</span>`).join('');
+    let opts = `<option value="">Who says it?</option>` + (ex.characters || []).map((c, ci) => `<option value="${ci + 1}" ${speakerVal === String(ci + 1) ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+    h += `
+      <div class="item-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
+        <div class="item-controls" style="width: 100%; display: flex; gap: 8px;">
+          <input class="txt-input ${sCls}" style="flex:1;min-width:220px;" type="text" data-key="${key}" data-idx="${idx}" data-kind="wb-sentence" value="${escapeHtml(sentVal)}" ${checked ? 'disabled' : ''} placeholder="Order the words and write the sentence…">
+          <select class="sel-input ${spCls}" data-key="${key}" data-idx="${idx}" data-kind="wb-speaker" ${checked ? 'disabled' : ''}>${opts}</select>
+        </div>
+        ${checked && sCls === 'incorrect' ? `<div class="txt-answer-hint">correct: ${escapeHtml(it.answer)}</div>` : ''}
+      </div>
+    `;
+  });
+  return h;
+}
+
+function renderWbItem(ex, key, it, idx, checked) {
+  const ans = getWbAns(currentWbUnit, key);
+  const stored = ans[idx];
+
+  if (ex.type === 'personal') {
+    const val = stored || '';
+    return `
+      <div class="item-row">
+        <div class="item-prompt">📝 ${escapeHtml(it.prompt)}</div>
+        <div class="item-controls" style="flex:1;">
+          <input class="txt-input" type="text" data-key="${key}" data-idx="${idx}" data-kind="wb-personal" value="${escapeHtml(val)}" placeholder="your answer (not graded)">
+        </div>
+      </div>
+    `;
+  }
+
+  if (ex.type === 'choice') {
+    const optsHtml = it.options.map((opt, oi) => {
+      let cls = (stored === oi) ? 'selected' : '';
+      if (checked) {
+        if (oi === it.correct) cls += ' reveal-correct';
+        else if (stored === oi) cls = 'selected incorrect';
+      }
+      return `<button class="pill-opt ${cls}" data-key="${key}" data-idx="${idx}" data-oi="${oi}" data-kind="wb-choice" ${checked ? 'disabled' : ''}>${escapeHtml(opt)}</button>`;
+    }).join('');
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls">${optsHtml}</div>
+      </div>
+    `;
+  }
+
+  if (ex.type === 'tf') {
+    const optsHtml = ['T', 'F'].map(opt => {
+      let cls = (stored === opt) ? 'selected' : '';
+      if (checked) {
+        if (opt === it.answer) cls += ' reveal-correct';
+        else if (stored === opt) cls = 'selected incorrect';
+      }
+      return `<button class="pill-opt ${cls}" data-key="${key}" data-idx="${idx}" data-oi="${opt}" data-kind="wb-tf" ${checked ? 'disabled' : ''}>${opt === 'T' ? 'True' : 'False'}</button>`;
+    }).join('');
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls">${optsHtml}</div>
+      </div>
+    `;
+  }
+
+  if (ex.type === 'odd-one-out') {
+    const optsHtml = it.words.map(w => {
+      let cls = (stored === w) ? 'selected' : '';
+      if (checked) {
+        if (w === it.odd) cls += ' reveal-correct';
+        else if (stored === w) cls = 'selected incorrect';
+      }
+      return `<button class="pill-opt ${cls}" data-key="${key}" data-idx="${idx}" data-oi="${escapeHtml(w)}" data-kind="wb-odd" ${checked ? 'disabled' : ''}>${escapeHtml(w)}</button>`;
+    }).join('');
+    return `
+      <div class="item-row" style="flex-wrap:wrap;">
+        <div class="item-controls" style="flex-wrap:wrap;">${optsHtml}</div>
+        ${checked && stored !== it.odd ? `<span class="txt-answer-hint">odd one out: ${escapeHtml(it.odd)}</span>` : ''}
+      </div>
+    `;
+  }
+
+  if (ex.type === 'number-match') {
+    let opts = `<option value="">–</option>`;
+    for (let n = 1; n <= 8; n++) opts += `<option value="${n}" ${stored == n ? 'selected' : ''}>${n}</option>`;
+    let cls = '';
+    if (checked && stored) cls = (Number(stored) === it.answer) ? 'correct' : 'incorrect';
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.label)}</div>
+        <div class="item-controls">
+          <select class="sel-input ${cls}" data-key="${key}" data-idx="${idx}" data-kind="wb-numsel" ${checked ? 'disabled' : ''}>${opts}</select>
+          ${checked && cls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${it.answer}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (ex.type === 'tick-write') {
+    let cls = '';
+    if (checked) {
+      const norm = normText(stored || '');
+      cls = normText(it.answer) === norm ? 'correct' : 'incorrect';
+    }
+    return `
+      <div class="item-row">
+        <div class="item-prompt">
+          <span style="font-size:1.1rem;margin-right:8px;">${it.tick === '✔' ? '✔️' : '✖️'}</span>
+          ${escapeHtml(it.prompt)}
+        </div>
+        <div class="item-controls" style="flex:1;">
+          <input class="txt-input ${cls}" type="text" data-key="${key}" data-idx="${idx}" data-kind="wb-text" value="${stored ? escapeHtml(stored) : ''}" ${checked ? 'disabled' : ''} placeholder="write the answer…">
+          ${checked && cls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${escapeHtml(it.answer)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (it.given) {
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt || it.label || '')}</div>
+        <div class="item-controls">
+          <span class="wb-given-answer">${escapeHtml(it.given)}</span>
+          <span class="txt-answer-hint">(example)</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  let cls = '', fb = '';
+  if (checked && it.answer) {
+    const val = normText(stored || '');
+    const answers = Array.isArray(it.answer) ? it.answer : [it.answer];
+    const ok = answers.map(a => normText(String(a))).includes(val);
+    cls = ok ? 'correct' : 'incorrect';
+    fb = ok ? `<span class="txt-feedback">✓</span>` : `<span class="txt-feedback bad">✗</span>`;
+  }
+  return `
+    <div class="item-row">
+      <div class="item-prompt">${escapeHtml(it.prompt || it.label || '')}</div>
+      <div class="item-controls" style="flex:1;min-width:200px;">
+        <input class="txt-input ${cls}" type="text" data-key="${key}" data-idx="${idx}" data-kind="wb-text" value="${stored ? escapeHtml(stored) : ''}" ${checked && it.answer ? 'disabled' : ''} placeholder="type your answer…">
+        ${fb}
+        ${checked && cls === 'incorrect' ? `<div class="txt-answer-hint">correct: ${escapeHtml(Array.isArray(it.answer) ? it.answer[0] : String(it.answer || ''))}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function wireWbInputs(checked) {
+  const main = document.getElementById('wbMain');
+  if (!main) return;
+  
+  main.querySelectorAll('[data-kind="wb-text"],[data-kind="wb-personal"]').forEach(inp => {
+    inp.oninput = () => {
+      getWbAns(currentWbUnit, inp.dataset.key)[+inp.dataset.idx] = inp.value;
+      saveState();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="wb-numsel"],[data-kind="wb-sentence"],[data-kind="wb-speaker"]').forEach(el => {
+    const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      const ans = getWbAns(currentWbUnit, el.dataset.key);
+      const idx = el.dataset.idx === 'secret' ? 'secret' : +el.dataset.idx;
+      if (el.dataset.kind === 'wb-speaker' || el.dataset.kind === 'wb-sentence') {
+        ans[idx] = ans[idx] || {};
+        if (el.dataset.kind === 'wb-speaker') ans[idx].speaker = el.value;
+        else ans[idx].sentence = el.value;
+      } else {
+        ans[idx] = el.value;
+      }
+      saveState();
+    });
+  });
+  
+  main.querySelectorAll('[data-kind="wb-choice"]').forEach(btn => {
+    btn.onclick = () => {
+      getWbAns(currentWbUnit, btn.dataset.key)[+btn.dataset.idx] = +btn.dataset.oi;
+      saveState();
+      renderWbUnit();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="wb-tf"],[data-kind="wb-odd"]').forEach(btn => {
+    btn.onclick = () => {
+      getWbAns(currentWbUnit, btn.dataset.key)[btn.dataset.oi ? btn.dataset.idx : +btn.dataset.idx] = btn.dataset.oi;
+      saveState();
+      renderWbUnit();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="cw-cell"]').forEach(inp => {
+    inp.oninput = () => {
+      inp.value = inp.value.toUpperCase().slice(0, 1);
+      const ans = getWbAns(currentWbUnit, inp.dataset.key);
+      const idx = +inp.dataset.idx, pos = +inp.dataset.pos;
+      let arr = (ans[idx] || '').split('');
+      while(arr.length <= pos) arr.push(' ');
+      arr[pos] = inp.value;
+      ans[idx] = arr.join('');
+      saveState();
+      
+      const next = inp.nextElementSibling;
+      if (inp.value && next) next.focus();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="cw-secret"]').forEach(inp => {
+    inp.oninput = () => {
+      getWbAns(currentWbUnit, inp.dataset.key).secret = 'S' + inp.value.toUpperCase();
+      saveState();
+    };
+  });
+  
+  main.querySelectorAll('.wb-chip').forEach(chip => {
+    chip.onclick = () => {
+      if (chip.classList.contains('used')) return;
+      const block = chip.closest('.sec-block');
+      const inputs = Array.from(block.querySelectorAll('[data-kind="wb-text"]'));
+      const target = inputs.find(i => !i.value);
+      if (target) {
+        target.value = chip.dataset.word;
+        target.dispatchEvent(new Event('input'));
+        chip.classList.add('used');
+      }
+    };
+  });
+}
+
+function scoreWbUnit(unitIdx) {
+  const u = WB_UNITS[unitIdx];
+  let earned = 0, max = 0;
+  u.exercises.forEach(ex => {
+    if (ex.type === 'personal') return;
+    const key = ex.lesson + '_' + ex.exnum;
+    const ans = getWbAns(unitIdx, key);
+    
+    if (ex.type === 'crossword') {
+      ex.items.forEach((row, idx) => {
+        max++;
+        const stored = ans[idx] || '';
+        if (stored.toUpperCase() === row.word.toUpperCase()) earned++;
+      });
+      max++;
+      if (normText(ans.secret || '') === normText(ex.secretWord)) earned++;
+    } else if (ex.type === 'word-order') {
+      ex.items.forEach((it, idx) => {
+        max += 2;
+        const val = ans[idx] || {};
+        if (normStrict(val.sentence || '') === normStrict(it.answer)) earned++;
+        if (val.speaker === String(it.character)) earned++;
+      });
+    } else {
+      ex.items.forEach((it, idx) => {
+        if (it.given) return;
+        max++;
+        const val = ans[idx];
+        if (ex.type === 'choice') {
+          if (val === it.correct) earned++;
+        } else if (ex.type === 'tf') {
+          if (val === it.answer) earned++;
+        } else if (ex.type === 'odd-one-out') {
+          if (val === it.odd) earned++;
+        } else if (ex.type === 'number-match') {
+          if (val !== undefined && Number(val) === it.answer) earned++;
+        } else if (ex.type === 'tick-write') {
+          if (val !== undefined && normText(val) === normText(it.answer)) earned++;
+        } else {
+          if (val !== undefined) {
+            const answers = Array.isArray(it.answer) ? it.answer : [it.answer];
+            if (answers.map(a => normText(String(a))).includes(normText(val))) earned++;
+          }
+        }
+      });
+    }
+  });
+  return {earned, max};
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INTERACTIVE TESTS MODE
+// ══════════════════════════════════════════════════════════════════
+
+function getTestAns(unitIdx, secId) {
+  STATE.testAnswers[unitIdx] = STATE.testAnswers[unitIdx] || {};
+  STATE.testAnswers[unitIdx][secId] = STATE.testAnswers[unitIdx][secId] || {};
+  return STATE.testAnswers[unitIdx][secId];
+}
+
+function initTests() {
+  testsInitialized = true;
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  
+  main.innerHTML = `
+    <nav class="unit-nav" style="border-bottom: 1px solid var(--border); margin-bottom: 20px;">
+      <div class="unit-tabs" id="testUnitTabs"></div>
+    </nav>
+    <main class="main" id="testMain" style="padding: 0; max-width: 100%;"></main>
+  `;
+  
+  buildTestUnitTabs();
+  renderTestUnit();
+}
+
+function buildTestUnitTabs() {
+  const wrap = document.getElementById('testUnitTabs');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  TESTS.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'utab' + (i === currentTestUnit ? ' active' : '');
+    btn.innerHTML = `<span class="ubadge" style="background:${t.color}; width:24px; height:24px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; font-family:'Fredoka One',cursive; font-size:.78rem; color:#fff; margin-right:6px;">${t.num}</span>Unit ${t.num} Test`;
+    btn.onclick = () => {
+      currentTestUnit = i;
+      STATE.testUnit = i;
+      saveState();
+      renderTestUnit();
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+function renderTestUnit() {
+  document.querySelectorAll('#testUnitTabs .utab').forEach((b, i) => b.classList.toggle('active', i === currentTestUnit));
+  const t = TESTS[currentTestUnit];
+  const main = document.getElementById('testMain');
+  if (!main) return;
+  const checked = !!STATE.testChecked[currentTestUnit];
+
+  let html = `
+    <div class="test-head">
+      <div class="test-head-left">
+        <div class="unit-icon" style="background:${t.color}; width:58px; height:58px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-family:'Fredoka One',cursive; font-size:1.7rem; color:#fff; box-shadow: 0 6px 0 rgba(0,0,0,.12);">${t.num}</div>
+        <div>
+          <h2 style="font-family:'Fredoka One',cursive;font-size:1.4rem; color: var(--text-primary);">Unit ${t.num} Test: ${escapeHtml(t.title)}</h2>
+          <p style="color:var(--text-secondary);font-size:.82rem;font-weight:700;">8 sections · ${t.pages.length} pages</p>
+        </div>
+      </div>
+      <div class="test-actions">
+        <button class="btn btn-ghost" id="testResetBtn">↺ Reset</button>
+        <button class="btn btn-primary" id="testCheckBtn">✓ Check answers</button>
+      </div>
+    </div>
+  `;
+
+  if (checked) {
+    const {earned, max} = scoreTestUnit(currentTestUnit);
+    const pct = max ? earned / max : 0;
+    let cls = 'retry', emoji = '🐝', msg = 'Keep trying!';
+    if (pct >= 0.85) { cls = 'celebrate'; emoji = '🎉'; msg = 'Excellent score! Double high-five!'; }
+    else if (pct >= 0.60) { cls = 'ok'; emoji = '👍'; msg = 'Good job! Keep it up.'; }
+    html += `
+      <div class="results-banner ${cls}">
+        <div class="results-emoji">${emoji}</div>
+        <div class="results-text">
+          <strong>${earned} / ${max} (auto-graded)</strong>
+          <span>${msg} Speaking activities are marked manually.</span>
+        </div>
+      </div>
+    `;
+    
+    if (pct >= 0.85 && typeof confetti === 'function') {
+      confetti();
+    }
+  }
+
+  const pageSecMap = [['v1', 'v2'], ['g3', 'g4'], ['r5', 'w6'], ['l7', 's8']];
+  t.pages.forEach((src, pi) => {
+    html += `
+      <div class="test-page-block">
+        <div class="test-page-img-wrap"><img src="${src}" loading="lazy" alt="Unit ${t.num} test page ${pi + 1}"></div>
+        <div class="test-sections">
+    `;
+    pageSecMap[pi].forEach(secId => {
+      const sec = t.sections.find(s => s.id === secId);
+      if (sec) html += renderTestSection(t, sec, checked);
+    });
+    html += `</div></div>`;
+  });
+
+  main.innerHTML = html;
+
+  document.getElementById('testCheckBtn').onclick = () => {
+    STATE.testChecked[currentTestUnit] = true;
+    const {earned} = scoreTestUnit(currentTestUnit);
+    STATE.score = (STATE.score || 0) + (earned * 10);
+    saveState();
+    renderTestUnit();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  };
+  
+  document.getElementById('testResetBtn').onclick = () => {
+    delete STATE.testAnswers[currentTestUnit];
+    delete STATE.testChecked[currentTestUnit];
+    delete STATE.speakDone[currentTestUnit];
+    saveState();
+    renderTestUnit();
+  };
+
+  wireTestSectionInputs(t, checked);
+}
+
+function renderTestSection(t, sec, checked) {
+  let h = `
+    <div class="sec-block" data-secid="${sec.id}">
+      <span class="sec-max">/ ${sec.maxScore}</span>
+      <div class="sec-instr"><span class="secnum">${sec.num}.</span>${escapeHtml(sec.instruction)}</div>
+      <span class="sec-group-badge ${sec.group}">${sec.group}</span>
+  `;
+
+  if (sec.passage) h += `<div class="sec-passage">${escapeHtml(sec.passage)}</div>`;
+  if (sec.scene) h += `<div class="sec-context">🖼️ ${escapeHtml(sec.scene)}</div>`;
+  if (sec.diagram) h += `<div class="sec-context">🖼️ ${escapeHtml(sec.diagram)}</div>`;
+
+  if (sec.type === 'listen') {
+    h += `
+      <div class="listen-bar">
+        <button class="listen-play-btn" data-audio="${t.audio}" data-secid="${sec.id}">▶</button>
+        <div class="listen-label">🎧 Listen to the Unit ${t.num} test audio, then choose your answer for each item</div>
+      </div>
+    `;
+  }
+
+  if (sec.wordBank && sec.type === 'text') {
+    h += `<div class="word-bank">` + sec.wordBank.map(w => `<span class="wb-chip" data-word="${escapeHtml(w)}">${escapeHtml(w)}</span>`).join('') + `</div>`;
+  }
+
+  h += `<div class="items">`;
+  sec.items.forEach((it, idx) => {
+    h += renderTestItem(t, sec, it, idx, checked);
+  });
+  h += `</div></div>`;
+  return h;
+}
+
+function renderTestItem(t, sec, it, idx, checked) {
+  const ans = getTestAns(currentTestUnit, sec.id);
+  const stored = ans[idx];
+
+  if (sec.type === 'assign') {
+    let opts = `<option value="">–</option>`;
+    for (let n = 1; n <= sec.count; n++) opts += `<option value="${n}" ${stored == n ? 'selected' : ''}>${n}</option>`;
+    let cls = '';
+    if (checked && stored !== undefined && stored !== '') cls = (Number(stored) === it.answer) ? 'correct' : 'incorrect';
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.label)}</div>
+        <div class="item-controls">
+          <select class="sel-input ${cls}" data-sec="${sec.id}" data-idx="${idx}" data-kind="assign">${opts}</select>
+          ${checked && cls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${it.answer}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (sec.type === 'choice') {
+    const optsHtml = it.options.map((opt, oi) => {
+      let cls = (stored === oi) ? 'selected' : '';
+      if (checked) {
+        if (oi === it.correct) cls += ' reveal-correct';
+        else if (stored === oi) cls = 'selected incorrect';
+      }
+      return `<button class="pill-opt ${cls}" data-sec="${sec.id}" data-idx="${idx}" data-oi="${oi}" data-kind="choice" ${checked ? 'disabled' : ''}>${escapeHtml(opt)}</button>`;
+    }).join('');
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls">${optsHtml}</div>
+      </div>
+    `;
+  }
+
+  if (sec.type === 'text') {
+    let cls = '';
+    let fb = '';
+    if (checked) {
+      const val = sec.strict ? normStrict(stored || '') : normText(stored || '');
+      const accepted = it.answer.map(a => sec.strict ? normStrict(a) : normText(a));
+      const ok = accepted.includes(val);
+      cls = ok ? 'correct' : 'incorrect';
+      fb = ok ? `<span class="txt-feedback">✓</span>` : `<span class="txt-feedback bad">✗</span>`;
+    }
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls" style="flex:1;min-width:220px;">
+          <input class="txt-input ${cls}" type="text" data-sec="${sec.id}" data-idx="${idx}" data-kind="text" value="${stored ? escapeHtml(stored) : ''}" ${checked ? 'disabled' : ''} placeholder="type your answer…">
+          ${fb}
+          ${checked && cls === 'incorrect' ? `<div class="txt-answer-hint">correct: ${escapeHtml(it.answer[0])}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (sec.type === 'match') {
+    let opts = `<option value="">–</option>`;
+    sec.letters.forEach(L => { opts += `<option value="${L}" ${stored === L ? 'selected' : ''}>${L} — ${escapeHtml(sec.letterText[L])}</option>`; });
+    let cls = '';
+    if (checked && stored) cls = (stored === it.answer) ? 'correct' : 'incorrect';
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls">
+          <select class="sel-input ${cls}" data-sec="${sec.id}" data-idx="${idx}" data-kind="match">${opts}</select>
+          ${checked && cls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${it.answer}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (sec.type === 'listen') {
+    if (sec.letters) {
+      let opts = `<option value="">–</option>`;
+      sec.letters.forEach(L => { const letter = L.split(' — ')[0]; opts += `<option value="${letter}" ${stored === letter ? 'selected' : ''}>${escapeHtml(L)}</option>`; });
+      let cls = '';
+      if (checked && stored) cls = (stored === it.answer) ? 'correct' : 'incorrect';
+      return `
+        <div class="item-row">
+          <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+          <div class="item-controls">
+            <select class="sel-input ${cls}" data-sec="${sec.id}" data-idx="${idx}" data-kind="listen-select" ${checked ? 'disabled' : ''}>${opts}</select>
+            ${checked && cls === 'incorrect' ? `<span class="txt-answer-hint">correct: ${it.answer}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }
+    const optsHtml = sec.optionSet.map(opt => {
+      let cls = (stored === opt) ? 'selected' : '';
+      if (checked) {
+        if (opt === it.answer) cls += ' reveal-correct';
+        else if (stored === opt) cls = 'selected incorrect';
+      }
+      return `<button class="pill-opt ${cls}" data-sec="${sec.id}" data-idx="${idx}" data-oi="${escapeHtml(opt)}" data-kind="listen-choice" ${checked ? 'disabled' : ''}>${escapeHtml(opt)}</button>`;
+    }).join('');
+    return `
+      <div class="item-row">
+        <div class="item-prompt">${escapeHtml(it.prompt)}</div>
+        <div class="item-controls">${optsHtml}</div>
+      </div>
+    `;
+  }
+
+  if (sec.type === 'speaking') {
+    STATE.speakDone[currentTestUnit] = STATE.speakDone[currentTestUnit] || {};
+    STATE.speakDone[currentTestUnit][sec.id] = STATE.speakDone[currentTestUnit][sec.id] || {};
+    const done = !!STATE.speakDone[currentTestUnit][sec.id][idx];
+    const revealId = `reveal-${sec.id}-${idx}`;
+    return `
+      <div class="speak-card ${done ? 'done' : ''}">
+        <div style="flex:1;">
+          <div class="item-prompt">🗣️ ${escapeHtml(it.prompt)}</div>
+          ${it.suggested ? `<div class="speak-reveal" id="${revealId}" style="display:none;font-size:.78rem;color:#9C968C;font-weight:700;margin-top:4px;">💡 ${escapeHtml(it.suggested)}</div>` : ''}
+        </div>
+        ${it.suggested ? `<button class="btn btn-ghost" style="padding:6px 12px;font-size:.72rem;" data-reveal="${revealId}">💡 Show answer</button>` : ''}
+        <label class="speak-check"><input type="checkbox" data-sec="${sec.id}" data-idx="${idx}" data-kind="speak" ${done ? 'checked' : ''}> I said it</label>
+      </div>
+    `;
+  }
+
+  return '';
+}
+
+function wireTestSectionInputs(t, checked) {
+  const main = document.getElementById('testMain');
+  if (!main) return;
+
+  main.querySelectorAll('[data-kind="choice"]').forEach(btn => {
+    btn.onclick = () => {
+      const secId = btn.dataset.sec, idx = +btn.dataset.idx, oi = +btn.dataset.oi;
+      getTestAns(currentTestUnit, secId)[idx] = oi;
+      saveState();
+      renderTestUnit();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="listen-choice"]').forEach(btn => {
+    btn.onclick = () => {
+      const secId = btn.dataset.sec, idx = +btn.dataset.idx, oi = btn.dataset.oi;
+      getTestAns(currentTestUnit, secId)[idx] = oi;
+      saveState();
+      renderTestUnit();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="assign"], [data-kind="match"], [data-kind="listen-select"]').forEach(sel => {
+    sel.onchange = () => {
+      const secId = sel.dataset.sec, idx = +sel.dataset.idx;
+      getTestAns(currentTestUnit, secId)[idx] = sel.value;
+      saveState();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="text"]').forEach(inp => {
+    inp.oninput = () => {
+      const secId = inp.dataset.sec, idx = +inp.dataset.idx;
+      getTestAns(currentTestUnit, secId)[idx] = inp.value;
+      saveState();
+    };
+  });
+  
+  main.querySelectorAll('[data-kind="speak"]').forEach(cb => {
+    cb.onchange = () => {
+      const secId = cb.dataset.sec, idx = +cb.dataset.idx;
+      STATE.speakDone[currentTestUnit] = STATE.speakDone[currentTestUnit] || {};
+      STATE.speakDone[currentTestUnit][secId] = STATE.speakDone[currentTestUnit][secId] || {};
+      STATE.speakDone[currentTestUnit][secId][idx] = cb.checked;
+      saveState();
+      cb.closest('.speak-card').classList.toggle('done', cb.checked);
+    };
+  });
+  
+  main.querySelectorAll('[data-reveal]').forEach(btn => {
+    btn.onclick = () => {
+      const el = document.getElementById(btn.dataset.reveal);
+      if (el) { el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+    };
+  });
+
+  main.querySelectorAll('.wb-chip').forEach(chip => {
+    chip.onclick = () => {
+      if (chip.classList.contains('used')) return;
+      const block = chip.closest('.sec-block');
+      const inputs = Array.from(block.querySelectorAll('[data-kind="text"]'));
+      const target = inputs.find(i => !i.value);
+      if (target) {
+        target.value = chip.dataset.word;
+        target.dispatchEvent(new Event('input'));
+        chip.classList.add('used');
+      }
+    };
+  });
+
+  main.querySelectorAll('.listen-play-btn').forEach(btn => {
+    btn.onclick = () => toggleTestAudio(btn);
+  });
+}
+
+function scoreTestUnit(unitIdx) {
+  const t = TESTS[unitIdx];
+  let earned = 0, max = 0;
+  t.sections.forEach(sec => {
+    if (sec.type === 'speaking') return;
+    max += sec.maxScore;
+    const ans = getTestAns(unitIdx, sec.id);
+    sec.items.forEach((it, idx) => {
+      const val = ans[idx];
+      if (sec.type === 'choice') {
+        if (val === it.correct) earned++;
+      } else if (sec.type === 'assign') {
+        if (val !== undefined && Number(val) === it.answer) earned++;
+      } else if (sec.type === 'match') {
+        if (val === it.answer) earned++;
+      } else if (sec.type === 'listen') {
+        if (val !== undefined && val === it.answer) earned++;
+      } else if (sec.type === 'text') {
+        const norm = sec.strict ? normStrict(val || '') : normText(val || '');
+        const accepted = it.answer.map(a => sec.strict ? normStrict(a) : normText(a));
+        if (val !== undefined && accepted.includes(norm)) earned++;
+      }
+    });
+  });
+  return {earned, max};
+}
+
+function toggleTestAudio(btn) {
+  const src = btn.dataset.audio;
+  if (testPlayBtn === btn) { stopTestAudio(); return; }
+  stopTestAudio();
+  testPlayer.src = src;
+  testPlayer.play().catch(() => { btn.textContent = '⚠️'; setTimeout(() => { btn.textContent = '▶'; }, 1800); });
+  btn.textContent = '⏸';
+  testPlayBtn = btn;
+  testPlayer.onended = stopTestAudio;
+  
+  STATE.audioPlayed = (STATE.audioPlayed || 0) + 1;
+  saveState();
+}
+
+function stopTestAudio() {
+  testPlayer.pause();
+  testPlayer.currentTime = 0;
+  if (testPlayBtn) testPlayBtn.textContent = '▶';
+  testPlayBtn = null;
+}
+
+// Helpers
+function normText(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normStrict(s) {
+  return (s || '')
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeHtml(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+

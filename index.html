@@ -58,13 +58,23 @@
     </div>
   </header>
 
+  <!-- APP MODE SELECTOR -->
+  <nav class="app-mode-selector">
+    <div class="app-mode-tabs" id="appModeTabs">
+      <button class="am-tab active" data-mode="lessons"><span class="am-icon">🏠</span> Interactive Lessons</button>
+      <button class="am-tab" data-mode="book"><span class="am-icon">📖</span> Digital Student Book</button>
+      <button class="am-tab" data-mode="workbook"><span class="am-icon">📝</span> Interactive Workbook</button>
+      <button class="am-tab" data-mode="tests"><span class="am-icon">✅</span> Interactive Tests</button>
+    </div>
+  </nav>
+
   <!-- UNIT TABS -->
-  <nav class="unit-selector">
+  <nav class="unit-selector" id="rootUnitSelector">
     <div class="unit-tabs" id="unitTabs"></div>
   </nav>
 
   <!-- LESSON TABS -->
-  <div class="lesson-nav">
+  <div class="lesson-nav" id="rootLessonSelector">
     <div class="lesson-tabs" id="lessonTabs"></div>
   </div>
 
@@ -124,6 +134,7 @@
 
   <!-- Load Data then Application Logic -->
   <script src="js/data.js"></script>
+  <script src="js/data_v3.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
