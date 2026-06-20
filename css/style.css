@@ -2044,3 +2044,34 @@ footer strong { color: var(--yellow); }
   .page-stage { position: relative; }
 }
 
+/* ══════════════════════════════════════════
+   SPLIT-PANE LAYOUT FOR WORKBOOK & TESTS
+   ══════════════════════════════════════════ */
+@media(min-width: 992px) {
+  .test-page-block {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    align-items: start;
+    gap: 0;
+  }
+  .test-page-img-wrap {
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .test-page-img-wrap::-webkit-scrollbar {
+    width: 6px;
+  }
+  .test-page-img-wrap::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 99px;
+  }
+  .test-sections {
+    padding: 24px;
+  }
+}
+
