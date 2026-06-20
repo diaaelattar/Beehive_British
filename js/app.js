@@ -1341,7 +1341,7 @@ function initBook() {
         <div class="page-stage">
           <div class="page-frame" id="bookPageFrame" style="width: 100%; max-width: 640px; border-radius: 10px; overflow: hidden; position: relative; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);">
             <div class="ph" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #D8CDB4; font-size: 2rem;">📖</div>
-            <img id="bookPageImg" alt="Book page" style="display: block; width: 100%; height: auto; opacity: 0; transition: opacity .35s ease;">
+            <img id="bookPageImg" alt="Book page" style="display: block; width: 100%; height: auto;">
             <button class="nav-arrow mobile-show prev" id="bookPrevBtnM">‹</button>
             <button class="nav-arrow mobile-show next" id="bookNextBtnM">›</button>
           </div>
