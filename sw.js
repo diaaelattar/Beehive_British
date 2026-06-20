@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beehive2-cache-v2';
+const CACHE_NAME = 'beehive2-cache-v3';
 const CORE_ASSETS = [
   'index.html',
   'css/style.css',

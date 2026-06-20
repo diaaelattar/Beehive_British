@@ -780,6 +780,18 @@ function renderLesson(ui, li) {
 
 function buildLessonHTML(u, l, ui, li) {
   const pct = getUnitProgress(ui);
+  
+  const bookPageIdx = findPageForLesson(ui, l);
+  let openBookBtn = '';
+  if (bookPageIdx !== -1) {
+    const pageNum = BOOK_UNITS[ui].pages[bookPageIdx].page;
+    openBookBtn = `
+      <button class="btn btn-ghost" onclick="jumpToBookPage(${ui}, ${bookPageIdx})" style="padding: 6px 12px; font-size: 0.72rem; border-color: var(--orange); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+        📖 Student Book (p. ${pageNum})
+      </button>
+    `;
+  }
+
   let html = `
     <div class="unit-hero" style="background:${u.bg}">
       <h2>${u.num === 'S' ? '🌟' : '🐝'} ${u.title}</h2>
@@ -789,7 +801,10 @@ function buildLessonHTML(u, l, ui, li) {
         <div class="uhp-bar"><div class="uhp-fill" style="width:${pct}%"></div></div>
       </div>
     </div>
-    <h3 style="font-family:'Fredoka One',cursive;font-size:1.35rem;margin-bottom:20px;color:var(--text-primary);">${l.title}</h3>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+      <h3 style="font-family:'Fredoka One',cursive;font-size:1.35rem;color:var(--text-primary);margin:0;">${l.title}</h3>
+      ${openBookBtn}
+    </div>
   `;
 
   if (l.audio && l.audio.length) {
@@ -1338,31 +1353,37 @@ function initBook() {
       
       <div class="reader">
         <button class="nav-arrow prev" id="bookPrevBtn" title="Previous page (←)">‹</button>
-        <div class="page-stage">
-          <div class="page-frame" id="bookPageFrame" style="width: 100%; max-width: 640px; border-radius: 10px; overflow: hidden; position: relative; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);">
-            <div class="ph" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #D8CDB4; font-size: 2rem;">📖</div>
-            <img id="bookPageImg" alt="Book page" style="display: block; width: 100%; height: auto;">
-            <button class="nav-arrow mobile-show prev" id="bookPrevBtnM">‹</button>
-            <button class="nav-arrow mobile-show next" id="bookNextBtnM">›</button>
+        <div class="reader-split" id="bookReaderSplit">
+          <div class="page-stage">
+            <button class="btn-toggle-img" id="toggleBookImageBtn" onclick="toggleBookImage()" style="margin-bottom: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              📖 Hide Page Image
+            </button>
+            <div class="page-frame" id="bookPageFrame" style="width: 100%; max-width: 640px; border-radius: 10px; overflow: hidden; position: relative; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);">
+              <div class="ph" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #D8CDB4; font-size: 2rem;">📖</div>
+              <img id="bookPageImg" alt="Book page" style="display: block; width: 100%; height: auto;">
+              <button class="nav-arrow mobile-show prev" id="bookPrevBtnM">‹</button>
+              <button class="nav-arrow mobile-show next" id="bookNextBtnM">›</button>
+            </div>
+            <div class="page-meta" style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 640px; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
+              <div class="page-counter" style="font-weight: 800; font-size: .82rem; color: var(--text-secondary);">Page <b id="bookPageIdx" style="color: var(--text-primary);">1</b> of <b id="bookPageTotal">12</b></div>
+              <div id="bookInteractiveBtnWrap" style="display:none;"></div>
+              <div class="book-page-num" id="bookPageNum" style="background: var(--text-primary); color: var(--bg); font-family: 'Fredoka One', cursive; font-size: .78rem; padding: 4px 12px; border-radius: 8px;">p. 6</div>
+            </div>
+            
+            <div class="audio-strip">
+              <div class="audio-strip-label">🔊 Tracks</div>
+              <div class="track-btns" id="bookTrackBtns"></div>
+            </div>
+            
+            <div class="thumb-strip" id="bookThumbStrip"></div>
+            <div class="kbd-hint" style="text-align: center; color: var(--text-secondary); font-size: .74rem; font-weight: 700; margin-top: 6px;">Use <kbd>←</kbd> <kbd>→</kbd> arrow keys to turn pages</div>
           </div>
-          <div class="page-meta" style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 640px; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
-            <div class="page-counter" style="font-weight: 800; font-size: .82rem; color: var(--text-secondary);">Page <b id="bookPageIdx" style="color: var(--text-primary);">1</b> of <b id="bookPageTotal">12</b></div>
-            <div class="book-page-num" id="bookPageNum" style="background: var(--text-primary); color: var(--bg); font-family: 'Fredoka One', cursive; font-size: .78rem; padding: 4px 12px; border-radius: 8px;">p. 6</div>
-          </div>
-          
-          <div class="audio-strip">
-            <div class="audio-strip-label">🔊 Tracks</div>
-            <div class="track-btns" id="bookTrackBtns"></div>
-          </div>
-          
-          <div class="thumb-strip" id="bookThumbStrip"></div>
-          <div class="kbd-hint" style="text-align: center; color: var(--text-secondary); font-size: .74rem; font-weight: 700; margin-top: 6px;">Use <kbd>←</kbd> <kbd>→</kbd> arrow keys to turn pages</div>
+          <div class="book-interactive-pane" id="bookInteractivePane"></div>
         </div>
         <button class="nav-arrow next" id="bookNextBtn" title="Next page (→)">›</button>
       </div>
     </div>
   `;
-  
   buildBookUnitTabs();
   renderBookUnit();
   
@@ -1424,7 +1445,6 @@ function renderBookPage() {
   if (img) {
     img.classList.remove('loaded');
     if (loader) loader.style.display = 'flex';
-    img.src = `Student Book/images/${page.file}`;
     img.onload = () => {
       img.classList.add('loaded');
       if (loader) loader.style.display = 'none';
@@ -1435,6 +1455,7 @@ function renderBookPage() {
         loader.style.display = 'flex';
       }
     };
+    img.src = `Student Book/images/${page.file}`;
   }
   
   const pageIdxEl = document.getElementById('bookPageIdx');
@@ -1443,7 +1464,34 @@ function renderBookPage() {
   if (pageTotalEl) pageTotalEl.textContent = u.pages.length;
   const pageNumEl = document.getElementById('bookPageNum');
   if (pageNumEl) pageNumEl.textContent = `p. ${page.page}`;
+
+  const wrap = document.getElementById('bookInteractiveBtnWrap');
+  if (wrap) wrap.innerHTML = '';
   
+  const pane = document.getElementById('bookInteractivePane');
+  if (pane) {
+    pane.innerHTML = '';
+    const lessonIdx = findLessonForPage(currentBookUnit, page);
+    if (lessonIdx !== -1) {
+      const lu = UNITS[currentBookUnit];
+      const l = lu.lessons[lessonIdx];
+      pane.innerHTML = `
+        <div class="lesson-wrap" style="padding:0; margin:0; box-shadow:none; border:none; background:transparent;">
+          ${buildLessonHTML(lu, l, currentBookUnit, lessonIdx)}
+        </div>
+      `;
+      restoreAnswers(currentBookUnit, lessonIdx);
+    } else {
+      pane.innerHTML = `
+        <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); background: var(--bg-card); border-radius: var(--radius); border: 1px dashed var(--border); font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 10px; height: 100%; justify-content: center; min-height: 250px;">
+          <span style="font-size: 2rem;">📖</span>
+          <span style="font-size: 0.95rem; font-family: 'Fredoka One', cursive;">Textbook Page</span>
+          <span style="font-size: 0.8rem; font-weight: 600; opacity: 0.85; max-width: 280px; line-height: 1.4;">No interactive exercises are mapped directly to this page. Use the Unit selector or thumbnail strip to browse other pages.</span>
+        </div>
+      `;
+    }
+  }
+
   // Audio tracks
   const trackBtns = document.getElementById('bookTrackBtns');
   if (trackBtns) {
@@ -1686,11 +1734,34 @@ function renderWbUnit() {
   lessons.forEach(lesson => {
     const lessonExs = u.exercises.filter(e => e.lesson === lesson);
     const pages = [...new Set(lessonExs.map(e => e.page))];
-    html += `<div class="lesson-badge">${escapeHtml(lesson)}</div>`;
+    
+    const firstPageUrl = pages[0];
+    const pageIndexInWb = u.pages.indexOf(firstPageUrl);
+    let bookPageLinkBtn = '';
+    if (pageIndexInWb !== -1 && BOOK_UNITS[currentWbUnit] && BOOK_UNITS[currentWbUnit].pages[pageIndexInWb]) {
+      const studentBookPageNum = BOOK_UNITS[currentWbUnit].pages[pageIndexInWb].page;
+      bookPageLinkBtn = `
+        <button class="btn btn-ghost" onclick="jumpToBookPage(${currentWbUnit}, ${pageIndexInWb})" style="padding: 4px 10px; font-size: 0.72rem; border-color: var(--orange); color: var(--text-primary); margin-left: 10px; display: inline-flex; align-items: center; gap: 4px;">
+          📖 Student Book (p. ${studentBookPageNum})
+        </button>
+      `;
+    }
+
+    html += `
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 22px 0 10px;">
+        <div class="lesson-badge" style="margin:0;">${escapeHtml(lesson)}</div>
+        ${bookPageLinkBtn}
+        <button class="btn btn-ghost btn-toggle-img" onclick="toggleWbImage(this)" style="padding: 4px 10px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
+          📖 Hide Page Image
+        </button>
+      </div>
+    `;
     html += `<div class="test-page-block">`;
+    html += `<div class="test-page-img-wrap">`;
     pages.forEach(p => {
-      html += `<div class="test-page-img-wrap"><img src="${p}" loading="lazy" alt="${escapeHtml(lesson)}"></div>`;
+      html += `<img src="${p}" loading="lazy" alt="${escapeHtml(lesson)}">`;
     });
+    html += `</div>`;
     html += `<div class="test-sections">`;
     lessonExs.forEach(ex => {
       html += renderWbEx(u, ex, checked);
@@ -2174,6 +2245,11 @@ function renderTestUnit() {
   t.pages.forEach((src, pi) => {
     html += `
       <div class="test-page-block">
+        <div style="grid-column: span 2; padding: 12px 20px 0; display: flex; justify-content: flex-end;">
+          <button class="btn btn-ghost btn-toggle-img" onclick="toggleTestImage(this)" style="padding: 4px 10px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
+            📖 Hide Page Image
+          </button>
+        </div>
         <div class="test-page-img-wrap"><img src="${src}" loading="lazy" alt="Unit ${t.num} test page ${pi + 1}"></div>
         <div class="test-sections">
     `;
@@ -2514,3 +2590,110 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+// ══════════════════════════════════════════
+// CROSS-LINKING & NAVIGATION JUMPS HELPERS
+// ══════════════════════════════════════════
+
+function findLessonForPage(unitIdx, page) {
+  const u = UNITS[unitIdx];
+  if (!u) return -1;
+  const pageTracks = page.tracks || [];
+  
+  if (pageTracks.length) {
+    for (let li = 0; li < u.lessons.length; li++) {
+      const lesson = u.lessons[li];
+      if (lesson.audio) {
+        for (const aud of lesson.audio) {
+          const trackNum = parseInt((aud.label || '').replace(/\D/g, ''), 10);
+          if (pageTracks.includes(trackNum)) {
+            return li;
+          }
+        }
+      }
+    }
+  }
+  
+  const pageIndexInUnit = BOOK_UNITS[unitIdx].pages.indexOf(page);
+  if (pageIndexInUnit === -1) return -1;
+  return Math.min(u.lessons.length - 1, Math.floor(pageIndexInUnit / 2));
+}
+
+function findPageForLesson(unitIdx, lesson) {
+  const bu = BOOK_UNITS[unitIdx];
+  if (!bu) return -1;
+  const audioTracks = (lesson.audio || []).map(aud => parseInt((aud.label || '').replace(/\D/g, ''), 10));
+  
+  if (audioTracks.length) {
+    for (let pi = 0; pi < bu.pages.length; pi++) {
+      const page = bu.pages[pi];
+      if (page.tracks && page.tracks.some(t => audioTracks.includes(t))) {
+        return pi;
+      }
+    }
+  }
+  
+  const lessonIdx = UNITS[unitIdx].lessons.indexOf(lesson);
+  if (lessonIdx === -1) return -1;
+  return Math.min(bu.pages.length - 1, lessonIdx * 2);
+}
+
+function jumpToInteractiveLesson(unitIdx, lessonIdx) {
+  currentUnit = unitIdx;
+  currentLesson = lessonIdx;
+  STATE.lastUnit = unitIdx;
+  STATE.lastLesson = lessonIdx;
+  STATE.appMode = 'lessons';
+  saveState();
+  
+  updateAppModeTabsUI();
+  
+  const rootUnit = document.getElementById('rootUnitSelector');
+  const rootLesson = document.getElementById('rootLessonSelector');
+  if (rootUnit) rootUnit.style.display = 'block';
+  if (rootLesson) rootLesson.style.display = 'block';
+  
+  buildUnitTabs();
+  renderUnit(unitIdx, lessonIdx);
+  updateOverviewBar();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function toggleWbImage(btn) {
+  const header = btn.parentElement;
+  if (!header) return;
+  const pageBlock = header.nextElementSibling;
+  if (pageBlock) {
+    const imgWrap = pageBlock.querySelector('.test-page-img-wrap');
+    if (imgWrap) {
+      const isHidden = imgWrap.style.display === 'none';
+      imgWrap.style.display = isHidden ? 'block' : 'none';
+      pageBlock.classList.toggle('img-hidden', !isHidden);
+      btn.innerHTML = isHidden ? '📖 Hide Page Image' : '📖 Show Page Image';
+    }
+  }
+}
+
+function toggleBookImage() {
+  const split = document.getElementById('bookReaderSplit');
+  const frame = document.getElementById('bookPageFrame');
+  const btn = document.getElementById('toggleBookImageBtn');
+  if (split && frame && btn) {
+    const isHidden = frame.style.display === 'none';
+    frame.style.display = isHidden ? 'block' : 'none';
+    split.classList.toggle('img-hidden', !isHidden);
+    btn.innerHTML = isHidden ? '📖 Hide Page Image' : '📖 Show Page Image';
+  }
+}
+
+function toggleTestImage(btn) {
+  const pageBlock = btn.closest('.test-page-block');
+  if (pageBlock) {
+    const imgWrap = pageBlock.querySelector('.test-page-img-wrap');
+    if (imgWrap) {
+      const isHidden = imgWrap.style.display === 'none';
+      imgWrap.style.display = isHidden ? 'block' : 'none';
+      pageBlock.classList.toggle('img-hidden', !isHidden);
+      btn.innerHTML = isHidden ? '📖 Hide Page Image' : '📖 Show Page Image';
+    }
+  }
+}
